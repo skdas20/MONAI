@@ -37,6 +37,8 @@ class ExtractDataKeyFromMetaKeyd(MapTransform):
         keys: keys to be transferred from meta to data
         meta_key: the meta key where all the meta-data is stored
         allow_missing_keys: don't raise exception if key is missing
+        image_only: if True, skip keys whose extracted value is a MetaTensor
+            to avoid duplicating data that already carries its own metadata.
 
     Example:
         When the fastMRI dataset is loaded, "kspace" is stored in the data dictionary,
@@ -44,9 +46,12 @@ class ExtractDataKeyFromMetaKeyd(MapTransform):
         In this case, ExtractDataKeyFromMetaKeyd moves "reconstruction_rss" to data.
     """
 
-    def __init__(self, keys: KeysCollection, meta_key: str, allow_missing_keys: bool = False) -> None:
+    def __init__(
+        self, keys: KeysCollection, meta_key: str, allow_missing_keys: bool = False, image_only: bool = False
+    ) -> None:
         MapTransform.__init__(self, keys, allow_missing_keys)
         self.meta_key = meta_key
+        self.image_only = image_only
 
     def __call__(self, data: Mapping[Hashable, NdarrayOrTensor]) -> dict[Hashable, Tensor]:
         """
@@ -60,7 +65,10 @@ class ExtractDataKeyFromMetaKeyd(MapTransform):
         d = dict(data)
         for key in self.keys:
             if key in d[self.meta_key]:
-                d[key] = d[self.meta_key][key]  # type: ignore
+                value = d[self.meta_key][key]  # type: ignore
+                if self.image_only and isinstance(value, MetaTensor):
+                    continue
+                d[key] = value
             elif not self.allow_missing_keys:
                 raise KeyError(
                     f"Key `{key}` of transform `{self.__class__.__name__}` was missing in the meta data"
